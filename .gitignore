@@ -1,2 +1,5 @@
 dataset/
 labels/
+aruco_btl/
+*.pt
+runs/

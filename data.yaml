@@ -1,0 +1,6 @@
+path: ./dataset
+train: images/train
+val: images/val
+
+nc: 1                 # số nhãn để học ( ở đây 1 vì chỉ có aruco thôi )
+names: ['aruco_marker']

@@ -1,5 +1,6 @@
-dataset/
-labels/
-aruco_btl/
+dataset
+flyingarucov2/labels
+aruco_btl
 *.pt
-runs/
+runs
+aruco_data

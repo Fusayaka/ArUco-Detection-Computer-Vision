@@ -1,4 +1,9 @@
-matplotlib
-numpy
-pandas
-opencv-python
+# Core Machine Learning & Vision
+ultralytics>=8.0.0
+opencv-python>=4.6.0
+
+# Data Processing
+pandas>=1.3.0
+
+# Utilities
+kaggle>=1.5.10

@@ -1,7 +1,5 @@
-dataset
-flyingarucov2/labels
-aruco_btl
+data/raw/
+data/processed/
+runs/
 *.pt
-runs
-aruco_data
-submission.csv
+output/

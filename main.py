@@ -37,7 +37,7 @@ def main():
     """Entry point of the application. Routes logic based on parsed commands."""
     args, parser = parse_arguments()
 
-    if not (args.run_all or args.prepare or args.train or args.infer):
+    if not (args.run_all or args.prepare or args.train or args.infer or args.download):
         parser.print_help()
         return
 

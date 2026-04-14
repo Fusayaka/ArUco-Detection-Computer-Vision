@@ -16,7 +16,20 @@ def train_model(project_path, run_name, output_model_name):
         output_model_name (str): The final filename for the best weights 
             within the 'models/' folder (e.g., 'v0.pt').
     """
-    model = YOLO("models/yolov8n.pt") 
+
+    base_model_path = os.path.join("models", "yolov8n.pt")
+
+    if not os.path.exists(base_model_path):
+        print(f"[*] Base model weights not found at {base_model_path}. Downloading...")
+        
+        model = YOLO("yolov8n.pt") 
+        
+        if os.path.exists("yolov8n.pt"):
+            shutil.move("yolov8n.pt", base_model_path)
+            print(f"Successfully downloaded and relocated base model to: {base_model_path}")
+    else:
+        print(f"[*] Loading base model from: {base_model_path}")
+        model = YOLO(base_model_path)
 
     print("="*50)
     print(f"Initializing training. Results will be stored at: {project_path}/{run_name}")

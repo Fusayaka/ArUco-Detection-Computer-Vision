@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import argparse
 import sys
-from detector import HybridDetector
+from src.detector import HybridDetector
 
 def generate_submission(test_dir, model_path, output_csv):
     """

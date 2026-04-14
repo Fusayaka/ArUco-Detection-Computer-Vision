@@ -16,7 +16,8 @@ runs/
 
 # Ignore all generated outputs (submission.csv, visualizations, etc.)
 output/*
-!output/.gitkeep
+
+!*/.gitkeep
 
 # ==========================================
 # 3. PYTHON CACHE & ENVIRONMENTS

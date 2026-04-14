@@ -22,6 +22,7 @@ def download_kaggle_data(competition_name, output_dir):
     except subprocess.CalledProcessError:
         print("[!] Error: Failed to download from Kaggle.")
         print("    Ensure your 'kaggle.json' is configured correctly.")
+        os.rmdir(output_dir)
         return
 
     if os.path.exists(zip_path):

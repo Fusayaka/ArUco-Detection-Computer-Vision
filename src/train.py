@@ -4,7 +4,7 @@ import argparse
 import torch
 from ultralytics import YOLO
 
-def train_model(project_path, run_name, output_model_name):
+def train_model(project_path, run_name, output_model_name, cuda_device=None):
     """
     Configures and executes the YOLOv8 training process on the custom ArUco dataset.
     Automatically copies and renames the best weights to the 'models/' directory after training.
@@ -36,7 +36,7 @@ def train_model(project_path, run_name, output_model_name):
     print(f"Initializing training. Results will be stored at: {project_path}/{run_name}")
     print("-"*50)
     
-    device = 0 if torch.cuda.is_available() else -1
+    device = cuda_device if cuda_device is not None else 0 if torch.cuda.is_available() else "cpu"
     results = model.train(
         data="config/data.yaml",
         epochs=50,
@@ -85,8 +85,6 @@ if __name__ == "__main__":
     )
     
     args = parser.parse_args()
-    
-    device = 0 if torch.cuda.is_available() else -1
 
     train_model(
         project_path=args.project, 

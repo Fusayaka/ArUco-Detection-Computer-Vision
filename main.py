@@ -25,6 +25,7 @@ def parse_arguments():
     parser.add_argument("--project", type=str, default="runs/aruco_training", help="Project run directory")
     parser.add_argument("--run", type=str, default="v1", help="Run name")
     parser.add_argument("--save", type=str, default="aruco_best.pt", help="Output model name in models/")
+    parser.add_argument("--cuda-device", type=int, default=None, help="Select number of cuda devices to train model")
 
     # Inference args
     parser.add_argument("--test_dir", type=str, default="data/raw/aruco_data/test", help="Test images directory")
@@ -64,7 +65,8 @@ def main():
         train_model(
             project_path=args.project, 
             run_name=args.run, 
-            output_model_name=args.save
+            output_model_name=args.save,
+            cuda_device=args.cuda_device
         )
 
     if run_infer:

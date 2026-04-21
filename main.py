@@ -27,7 +27,7 @@ def parse_arguments():
                         help="Run name")
     parser.add_argument("--save",    type=str, default="aruco_best.pt",
                         help="Output model name in models/")
-    parser.add_argument("--cuda-device", type=int, default=None,
+    parser.add_argument("--cuda-device", type=str, default=None,
                         help="CUDA device index to use for training")
 
     # Inference args
@@ -69,13 +69,22 @@ def main():
     if run_train:
         import torch
         if args.cuda_device is not None:
-            cuda_device = args.cuda_device
+            raw_device = args.cuda_device
+            raw_device = raw_device.replace('[', '').replace(']', '').strip()
+                
+            if ',' in raw_device:
+                cuda_device = [int(x.strip()) for x in raw_device.split(',')]
+            else:
+                try:
+                    cuda_device = int(raw_device)
+                except ValueError:
+                    cuda_device = raw_device
         else:
             cuda_device = 0 if torch.cuda.is_available() else None
  
         print("\n" + "=" * 50)
         print("[*] Starting training pipeline...")
-        print(f"    - Device : {'cuda:' + str(cuda_device) if cuda_device is not None else 'cpu'}")
+        print(f"    - Device : {'cuda:' + str(cuda_device) if cuda_device is not None else 'None'}")
         train_model(
             project_path=args.project,
             run_name=args.run,

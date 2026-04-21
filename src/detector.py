@@ -1,104 +1,167 @@
 import cv2
 import cv2.aruco as aruco
 from ultralytics import YOLO
+import numpy as np
+
+
+# Pre-defined sharpening kernel
+_SHARPEN_KERNEL = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+ 
+# Gamma lookup tables pre-computed for the two fixed gamma values used
+_GAMMA_TABLE = {
+    gamma: np.array([((i / 255.0) ** (1.0 / gamma)) * 255 for i in range(256)], dtype=np.uint8)
+    for gamma in (0.5, 2.0)
+}
+
 
 class HybridDetector:
     """
-    A hybrid detection pipeline integrating deep learning (YOLOv8) 
-    and traditional computer vision (OpenCV) for robust ArUco marker detection.
+    Hybrid detection pipeline combining YOLOv8 (region proposal) and
+    OpenCV ArUco (marker decoding) for robust single-image inference.
+ 
+    Flow:
+        1. YOLO locates candidate marker regions.
+        2. Each region is cropped (with padding) and preprocessed.
+        3. ArUco attempts decoding across several image variants.
+        4. Detections are deduplicated and returned sorted by marker ID.
     """
-    def __init__(self, model_path, conf_threshold=0.5, padding=20):
+ 
+    def __init__(self, model_path: str, conf_threshold: float = 0.5, padding: int = 20):
         """
-        Initializes the hybrid detector.
-        
         Args:
-            model_path (str): Path to the trained YOLOv8 weights (.pt file).
-            conf_threshold (float): Confidence threshold for YOLO predictions.
-            padding (int): Pixel margin added to bounding boxes to prevent edge cropping.
+            model_path:      Path to trained YOLOv8 weights (.pt file).
+            conf_threshold:  Minimum YOLO confidence to keep a box.
+            padding:         Extra pixels added around each bounding box
+                             to avoid edge-clipping the marker.
         """
         self.model = YOLO(model_path)
         self.conf_threshold = conf_threshold
         self.padding = padding
-        self.detector = aruco.ArucoDetector(
+ 
+        self.aruco_detector = aruco.ArucoDetector(
             aruco.getPredefinedDictionary(aruco.DICT_ARUCO_MIP_36h12),
-            aruco.DetectorParameters()
+            aruco.DetectorParameters(),
         )
+ 
+        self._clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
 
-    def _get_yolo_regions(self, image):
-        """
-        Predicts bounding boxes for candidate ArUco markers using the YOLO model.
-        
-        Args:
-            image (numpy.ndarray): The input image in RGB format.
-            
-        Returns:
-            numpy.ndarray: Array of bounding box coordinates [x1, y1, x2, y2].
-        """
-        results = self.model.predict(image, conf=self.conf_threshold, verbose=False)
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+ 
+    def _get_yolo_boxes(self, image_rgb: np.ndarray) -> np.ndarray:
+        """Returns YOLO bounding boxes [[x1, y1, x2, y2], ...] for the image."""
+        results = self.model.predict(image_rgb, conf=self.conf_threshold, verbose=False)
         return results[0].boxes.xyxy.cpu().numpy()
 
-    def _extract_roi(self, image, box):
+    def _crop_roi(self, image_bgr: np.ndarray, box: np.ndarray) -> tuple[np.ndarray, tuple[int, int]]:
         """
-        Extracts the Region of Interest (ROI) from the original image with padding.
-        
-        Args:
-            image (numpy.ndarray): The original input image.
-            box (list or numpy.ndarray): Bounding box coordinates [x1, y1, x2, y2].
-            
+        Crops a padded ROI from *image_bgr* using the given bounding box.
+ 
         Returns:
-            tuple: (Cropped ROI image, Offset coordinates (x, y) for global mapping).
+            roi:    Cropped image region.
+            offset: (x, y) top-left corner of the ROI in the original image,
+                    used to map local coordinates back to global ones.
         """
-        height, width, _ = image.shape
-        x1, y1, x2, y2 = box
+        h, w = image_bgr.shape[:2]
+        x1_f, y1_f, x2_f, y2_f = box
 
-        x1_p = max(0, int(x1 - self.padding))
-        y1_p = max(0, int(y1 - self.padding))
-        x2_p = min(width, int(x2 + self.padding))
-        y2_p = min(height, int(y2 + self.padding))
+        x1 = max(0, int(x1_f) - self.padding)
+        y1 = max(0, int(y1_f) - self.padding)
+        x2 = min(w, int(x2_f) + self.padding)
+        y2 = min(h, int(y2_f) + self.padding)
 
-        roi = image[y1_p:y2_p, x1_p:x2_p]
-        return roi, (x1_p, y1_p)
+        offset = (float(x1), float(y1))
 
-    def _decode_aruco(self, roi, offset):
+        return image_bgr[y1:y2, x1:x2], offset
+    
+    def _preprocessing_variants(self, gray: np.ndarray) -> list[np.ndarray]:
         """
-        Detects ArUco markers within the ROI and remaps local coordinates to global scale.
-        
+        Generates a list of preprocessed images to maximise decode chances
+        under varied lighting conditions.
+ 
+        Variants (in try order):
+            1. Raw grayscale
+            2. CLAHE-equalised
+            3. Dark-gamma correction  (gamma=0.5 — brightens)
+            4. Light-gamma correction (gamma=2.0 — darkens)
+            5. Sharpened CLAHE
+        """
+        clahe = self._clahe.apply(gray)
+        return [
+            gray,
+            clahe,
+            cv2.LUT(gray, _GAMMA_TABLE[0.5]),
+            cv2.LUT(gray, _GAMMA_TABLE[2.0]),
+            cv2.filter2D(clahe, -1, _SHARPEN_KERNEL),
+        ]
+
+    def _decode_aruco(self, roi: np.ndarray, offset: tuple[int, int]) -> tuple[list, np.ndarray | None]:
+        """
+        Tries to detect ArUco markers in *roi*, returning on the first
+        successful variant to avoid unnecessary processing.
+ 
         Args:
-            roi (numpy.ndarray): The cropped image region containing the marker.
-            offset (tuple): The (x, y) coordinates of the ROI's top-left corner in the original image.
-            
+            roi:    Cropped image region (BGR).
+            offset: (x, y) position of the ROI in the original image.
+ 
         Returns:
-            tuple: (List of global corner coordinates, Array of detected marker IDs).
+            (corners, ids) where corners are in original-image coordinates,
+            or ([], None) if no markers were found.
         """
-        corners, ids, _ = self.detector.detectMarkers(roi)
-        real_corners = []
-        if ids is not None:
-            for c in corners:
-                real_corners.append(c + offset)
-        return real_corners, ids
+        if roi is None or roi.size == 0:
+            return [], None
+ 
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+ 
+        for variant in self._preprocessing_variants(gray):
+            corners, ids, _ = self.aruco_detector.detectMarkers(variant)
+            if ids is not None and len(ids) > 0:
+                global_corners = [c + offset for c in corners]
+                return global_corners, ids
+ 
+        return [], None
 
-    def process_image(self, image_path):
-        """Executes the complete detection pipeline and returns the formatted prediction string."""
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+ 
+    def process_image(self, image_path: str) -> str:
+        """
+        Runs the full detection pipeline on a single image.
+ 
+        Args:
+            image_path: Path to the input image file.
+ 
+        Returns:
+            Space-separated string of detections sorted by marker ID:
+            ``"<id> <x> <y> <id> <x> <y> ..."``
+            where (x, y) is the top-left corner of each marker.
+            Returns ``" "`` if the image cannot be loaded or no markers found.
+        """
         img_bgr = cv2.imread(image_path)
         if img_bgr is None:
             return " "
-            
+ 
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-        boxes = self._get_yolo_regions(img_rgb)
-        
-        all_markers = []
-        
+        boxes = self._get_yolo_boxes(img_rgb)
+
+        markers: dict[int, tuple[float, float]] = {}
+ 
         for box in boxes:
-            roi, offset = self._extract_roi(img_bgr, box)
+            roi, offset = self._crop_roi(img_bgr, box)
             corners, ids = self._decode_aruco(roi, offset)
-            
+ 
             if ids is not None:
-                for i in range(len(ids)):
-                    marker_id = int(ids[i][0])
-                    top_left = corners[i][0][0]
-                    all_markers.append((marker_id, top_left[0], top_left[1]))
-                    
-        all_markers.sort(key=lambda x: x[0])
-        
-        output = [f"{m[0]} {m[1]:.3f} {m[2]:.3f}" for m in all_markers]
-        return " ".join(output) if output else " "
+                for marker_id, corner in zip(ids.flatten(), corners):
+                    top_left = corner[0][0]
+                    markers[int(marker_id)] = (top_left[0], top_left[1])
+ 
+        if not markers:
+            return " "
+ 
+        return " ".join(
+            f"{mid} {x:.3f} {y:.3f}"
+            for mid, (x, y) in sorted(markers.items())
+        )
+ 

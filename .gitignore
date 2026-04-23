@@ -25,3 +25,6 @@ output/*
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Ignore virtual environment folders
+venv/

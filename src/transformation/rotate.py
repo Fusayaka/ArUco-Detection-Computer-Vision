@@ -76,24 +76,27 @@ def rotate_json_labels(json_data, rotation_matrix):
 def main():
     # Example usage: rotate both image and JSON labels
     repo_root = Path(__file__).resolve().parents[2]
-    test_image_path = repo_root / "data" / "raw" / "flyingarucov2" / "000000000089.jpg"
-    test_json_path = repo_root / "data" / "raw" / "flyingarucov2" / "000000000089.json"
+    test_image_path = repo_root / "data" / "raw" / "flyingarucov2"
+    images = [f for f in os.listdir(test_image_path) if f.endswith(('.jpg', '.jpeg', '.png'))]
 
-    test_image = cv2.imread(str(test_image_path))
-    if test_image is None:
-        raise FileNotFoundError(f"Could not read image: {test_image_path}")
+    for image in images:
+        # Load image
+        image_instance = cv2.imread(str(test_image_path / image))
 
-    # Load JSON labels
-    with open(test_json_path, 'r') as f:
-        test_json_data = json.load(f)
 
-    for image in range(4):
-        angle = random.randint(0, 359)  # Generate a random angle between 0 and 359
-        rotated_image, rotation_matrix = rotate_image(test_image, angle)
+        # Generate a random angle between 1 and 359
+        angle = random.randint(1, 359)
+        rotated_image, rotation_matrix = rotate_image(image_instance, angle)
+
+        # Load corresponding JSON labels
+        json_path = repo_root / "data" / "raw" / "flyingarucov2" / f"{image.split('.')[0]}.json"
+        with open(json_path, 'r') as f:
+            test_json_data = json.load(f)
+
         rotated_json_data = rotate_json_labels(test_json_data, rotation_matrix)
         # Save rotated image and JSON for verification
-        output_image_path = repo_root / "data" / "processed" / f"rotated_{angle}.jpg"
-        output_json_path = repo_root / "data" / "processed" / f"rotated_{angle}.json"
+        output_image_path = repo_root / "data" / "processed" / f"rotated_{image.split('.')[0]}.jpg"
+        output_json_path = repo_root / "data" / "processed" / f"rotated_{image.split('.')[0]}.json"
         cv2.imwrite(str(output_image_path), rotated_image)
         with open(output_json_path, 'w') as f:
             json.dump(rotated_json_data, f, indent=4)

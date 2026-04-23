@@ -14,7 +14,7 @@ def apply_blur(image, kernel_size=(3, 3)):
 
 def main():
     raw_folder = repo_root / "data" / "raw" / "flyingarucov2"
-    output_folder = repo_root / "data" / "blurred"
+    output_folder = repo_root / "data" / "processed"
     output_folder.mkdir(parents=True, exist_ok=True)
     images = [f for f in os.listdir(raw_folder) if f.endswith(('.jpg', '.jpeg', '.png'))]
     for image in images:

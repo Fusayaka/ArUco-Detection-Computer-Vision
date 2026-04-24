@@ -27,19 +27,21 @@ def train_model(project_path, run_name, output_model_name, cuda_device=None):
         
         if os.path.exists("yolov8n.pt"):
             shutil.move("yolov8n.pt", base_model_path)
+            shutil.move("yolo26n.pt", base_model_path)
             print(f"Successfully downloaded and relocated base model to: {base_model_path}")
     else:
         print(f"[*] Loading base model from: {base_model_path}")
         model = YOLO(base_model_path)
 
     print("="*50)
+    project_path = os.path.join("runs", "detect", project_path)
     print(f"Initializing training. Results will be stored at: {project_path}/{run_name}")
     print("-"*50)
     
     device = cuda_device if cuda_device is not None else 0 if torch.cuda.is_available() else "cpu"
     results = model.train(
         data="config/data.yaml",
-        epochs=50,
+        epochs=30,
         imgsz=640,
         batch=16,
         device=device,

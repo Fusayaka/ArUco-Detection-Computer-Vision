@@ -21,11 +21,11 @@ def parse_arguments():
                         help="Path to output processed dataset")
 
     # Train args
-    parser.add_argument("--project", type=str, default="runs/aruco_training",
+    parser.add_argument("--project", type=str, default="aruco_training",
                         help="Project run directory")
     parser.add_argument("--run",     type=str, default="v1",
                         help="Run name")
-    parser.add_argument("--save",    type=str, default="aruco_best.pt",
+    parser.add_argument("--save",    type=str, default="best.pt",
                         help="Output model name in models/")
     parser.add_argument("--cuda-device", type=str, default=None,
                         help="CUDA device index to use for training")

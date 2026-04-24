@@ -1,5 +1,5 @@
 # PyTorch with CUDA 12.6
---extra-index-url https://download.pytorch.org/whl/cu126
+--extra-index-url https://download.pytorch.org/whl/cu128
 torch
 torchvision
 

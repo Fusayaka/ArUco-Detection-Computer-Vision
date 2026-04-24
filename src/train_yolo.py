@@ -49,7 +49,7 @@ def train_model(project_path, run_name, output_model_name, cuda_device=None):
         exist_ok=True
     )
     
-    best_model_path = os.path.join(project_path, run_name, "weights", "best.pt")
+    best_model_path = os.path.join("runs","detect", project_path, run_name, "weights", "best.pt")
     target_path = os.path.join("models", output_model_name)
 
     if os.path.exists(best_model_path):

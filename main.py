@@ -1,15 +1,17 @@
 import argparse
 from src.preprocess import convert_to_yolo_file, split_dataset
-from src.train import train_model
+from src.train_yolo import train_model
 from src.inference import generate_submission
 from src.download import run_download_pipeline
+from src.train_corners import train
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ArUco Marker Detection Pipeline - HCMUT Project")
 
     parser.add_argument("--run-all",  action="store_true", help="Run the entire pipeline (Download -> Prepare -> Train -> Infer)")
-    parser.add_argument("--download", action="store_true", help="Download dataset from Zenodo")
+    parser.add_argument("--download", action="store_true", help="Download dataset")
+    parser.add_argument("--source", type=str, default="zenodo", choices=["zenodo", "kaggle"], help="Source to download dataset from")
     parser.add_argument("--prepare",  action="store_true", help="Run data preparation step")
     parser.add_argument("--train",    action="store_true", help="Run model training step")
     parser.add_argument("--infer",    action="store_true", help="Run inference on test set")
@@ -33,7 +35,7 @@ def parse_arguments():
     # Inference args
     parser.add_argument("--test-dir", type=str, default="data/raw/aruco_data/test",
                         help="Test images directory")
-    parser.add_argument("--model",    type=str, default="models/best.pt",
+    parser.add_argument("--model",    type=str, default="models/aruco_best.pt",
                         help="Path to trained model weights")
     parser.add_argument("--out",      type=str, default="output/submission.csv",
                         help="Output CSV path")
@@ -55,7 +57,10 @@ def main():
         return
 
     if run_download:
-        run_download_pipeline()
+        if args.source == "kaggle":
+            run_download_pipeline(from_kaggle=True)
+        else:
+            run_download_pipeline(from_kaggle=False)
 
     if run_prepare:
         print("\n" + "=" * 50)

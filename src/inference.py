@@ -56,7 +56,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model", 
         type=str, 
-        default="models/best.pt", 
+        default="models/aruco_best.pt", 
         help="Path to the trained .pt model"
     )
     parser.add_argument(

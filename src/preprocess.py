@@ -48,6 +48,9 @@ def convert_to_yolo_file(dirpath):
             f.write('\n'.join(lines))
     print("Convert to YOLO format successfully.")
 
+def convert_csv_to_yolo_file(dirpath):
+    """Parse CSV annotations and convert them into standard YOLO format (.txt)."""
+
 def split_dataset(src_dir, base_dir="data/processed/dataset", train_ratio=0.8):
     """Split data into train/val sets and organize directory structure."""
     sub_dirs = ["images/train", "images/val", "labels/train", "labels/val"]

@@ -34,7 +34,6 @@ def train_model(project_path, run_name, output_model_name, cuda_device=None):
         model = YOLO(base_model_path)
 
     print("="*50)
-    project_path = os.path.join("runs", "detect", project_path)
     print(f"Initializing training. Results will be stored at: {project_path}/{run_name}")
     print("-"*50)
     
@@ -48,10 +47,11 @@ def train_model(project_path, run_name, output_model_name, cuda_device=None):
         project=project_path,
         name=run_name,
         workers=0,
-        exist_ok=True
+        exist_ok=True,
+        patience=10,
     )
     
-    best_model_path = os.path.join(project_path, run_name, "weights", "best.pt")
+    best_model_path = os.path.join("runs/detect", project_path, run_name, "weights", "best.pt")
     target_path = os.path.join("models", output_model_name)
 
     if os.path.exists(best_model_path):

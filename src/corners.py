@@ -91,7 +91,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from src.detect import Detection, crop_detection, expand_bbox
+from src.detect import Detection, crop_detection
 
 
 # ──────────────────────────────────────────────────────────────────────────────

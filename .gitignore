@@ -6,7 +6,7 @@ data/raw/
 data/processed/
 
 # Ignore PyTorch/YOLO model weights
-*.pt
+# *.pt
 
 # ==========================================
 # 2. LOGS & OUTPUTS

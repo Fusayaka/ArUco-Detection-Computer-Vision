@@ -2,11 +2,10 @@ import cv2
 import cv2.aruco as aruco
 from ultralytics import YOLO
 import numpy as np
+import os
 
 from src.corners import *
 from src.decode import *
-from src.pipeline import PipelineResult, _canonical_top_left
-
 
 # Pre-defined sharpening kernel
 _SHARPEN_KERNEL = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
@@ -17,6 +16,35 @@ _GAMMA_TABLE = {
     for gamma in (0.5, 2.0)
 }
 
+@dataclass
+class PipelineResult:
+    """One fully decoded marker detected in an image."""
+
+    marker_id: int  # Matched ID in ARUCO_MIP_36H12 (0–249)
+    top_left_x: float  # Canonical top-left corner, x pixel coordinate
+    top_left_y: float  # Canonical top-left corner, y pixel coordinate
+    hamming: int  # Hamming distance of the decode (0 = perfect)
+    corners: np.ndarray  # Refined (4,2) corners in image coords
+
+def _canonical_top_left(
+    refined_corners: np.ndarray,
+    rotation: int,
+) -> tuple[float, float]:
+    """Return the canonical top-left corner (x, y) in image pixel coordinates.
+
+    The refined_corners array is in spatial order: [TL, TR, BR, BL] by image
+    position.  The decode rotation maps which spatial corner is the canonical
+    (marker-readable) top-left.  See module docstring for the full derivation.
+
+    Args:
+        refined_corners: (4, 2) float32 — output of refine_corners().
+        rotation:        decode_result.rotation — 0/1/2/3.
+
+    Returns:
+        (x, y) of the canonical top-left corner.
+    """
+    tl = refined_corners[rotation % 4]
+    return float(tl[0]), float(tl[1])
 
 class HybridDetector:
     """
@@ -91,10 +119,10 @@ class HybridDetector:
         dx = int((x1 - x0) * margin)
         dy = int((y1 - y0) * margin)
         return (
-            max(0, x0 - 20),
-            max(0, y0 - 20),
-            min(img_w, x1 + 20),
-            min(img_h, y1 + 20),
+            max(0, x0 - dx),
+            max(0, y0 - dy),
+            min(img_w, x1 + dx),
+            min(img_h, y1 + dy),
         )
 
 
@@ -159,7 +187,8 @@ class HybridDetector:
         x2 = min(w, int(x2_f) + self.padding)
         y2 = min(h, int(y2_f) + self.padding)
 
-        offset = (float(x1), float(y1))
+        # offset = (float(x1), float(y1))
+        offset = (float(x1), float(y1), float(x2), float(y2))
 
         return image_bgr[y1:y2, x1:x2], offset
         # return image_bgr[y1:y2, x1:x2], (x1, y1, x2, y2)
@@ -211,6 +240,31 @@ class HybridDetector:
  
         return [], None
 
+    def _format_prediction_string(self, results: list[PipelineResult]) -> str:
+        """Convert a list of PipelineResults to the Kaggle submission string.
+
+        Format: "id x y id x y ..."
+        Example: "29 481.785 261.833 102 273.434 321.559"
+
+        If results is empty the prediction string is an empty string, which
+        tells the scorer there are no detections in this image.  That is the
+        correct behaviour for truly empty images (giving score = 1 if the
+        ground truth also has no markers, per the assignment spec).
+
+        WHY ROUND TO 3 DECIMAL PLACES?
+        The scorer computes Euclidean distance in pixels.  Three decimal places
+        gives sub-pixel precision (0.001 px), which is more than sufficient
+        given that the CNN itself has ~1 px accuracy.  More decimal places waste
+        bandwidth without improving the score.
+        """
+        if not results:
+            return ""
+
+        parts = []
+        for r in results:
+            parts.append(f"{r.marker_id} {r.top_left_x:.3f} {r.top_left_y:.3f}")
+
+        return " ".join(parts)
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -239,36 +293,80 @@ class HybridDetector:
  
         results = []
         for box in boxes:
-            crop, exp_bbox = self.crop_detection(img_bgr, box, margin=0)
-            # results.append(exp_bbox)
-
-            # 2.
+            crop, exp_bbox = self.crop_detection(img_bgr, box)
+            
             # roi, offset = self._crop_roi(image_bgr=img_bgr, box=box)
-            # results.append(offset)
-
-        # 1. return " ".join(f"{exp_bbox[0]} {exp_bbox[1]}" for exp_bbox in results)
-        # 2. return " ".join(f"{offset[0]} {offset[1]}" for offset in results)
             
             refined_corners = refine_corners_cnn(crop, exp_bbox, self.corner_model)
-            # decode_result = decode_marker(img_bgr, refined_corners)
-            results.append(refined_corners)
-            # if decode_result is not None:
-            #     tl_x, tl_y = _canonical_top_left(refined_corners, decode_result.rotation)
 
-            #     results.append(
-            #         PipelineResult(
-            #             marker_id=decode_result.marker_id,
-            #             top_left_x=tl_x,
-            #             top_left_y=tl_y,
-            #             hamming=decode_result.hamming,
-            #             corners=refined_corners,
-            #         )
-            #     )
+            decode_result = decode_marker(img_bgr, refined_corners)
+        #     results.append((exp_bbox, refined_corners, offset))
+
+        # return " ".join(f"exp_bbox: {exp_bbox[0]:.3f} {exp_bbox[1]:.3f} {exp_bbox[2]:.3f} {exp_bbox[3]:.3f} \n refined corners: {refined_corners} \n roi_offset: {offset[0]:.3f} {offset[1]:.3f} {offset[2]:.3f} {offset[3]:.3f} \n -------------------------------------------------- \n" for exp_bbox, refined_corners, offset in results)
+
+            # cropped_corners = img_bgr[int(refined_corners[0][1]):int(refined_corners[2][1]), int(refined_corners[0][0]):int(refined_corners[2][0])]
+            # # corners, ids = self._decode_aruco(corners_cropped, [0, 0])
+            # warped = warp_marker(img_bgr, refined_corners)
+            # normalized = normalize_patch(warped)
+            # decoded_corners, ids = self._decode_aruco(warped, (refined_corners[0][0], refined_corners[0][1]))
+            # results.append(decode_result)
+
+        # return " ".join(f"decoded_corners: {decoded_corners} ids: {ids}" for decoded_corners, ids in results)
+            if decode_result is not None:
+                tl_x, tl_y = _canonical_top_left(refined_corners, decode_result.rotation)
+
+                results.append(
+                    PipelineResult(
+                        marker_id=decode_result.marker_id,
+                        top_left_x=tl_x,
+                        top_left_y=tl_y,
+                        hamming=decode_result.hamming,
+                        corners=refined_corners,
+                    )
+                )
+
+        return self._format_prediction_string(results)
+
+        #     def ensure_bgr(img: np.ndarray) -> np.ndarray:
+        #         if img.ndim == 2:
+        #             return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        #         return img
+
+        #     img1 = ensure_bgr(crop)
+        #     img2 = ensure_bgr(cropped_corners)
+        #     img3 = ensure_bgr(warped)
+
+        #     target_h = 300
+        #     def resize_to_height(img: np.ndarray, h: int) -> np.ndarray:
+        #         scale = h / img.shape[0]
+        #         w = max(1, int(img.shape[1] * scale))
+        #         return cv2.resize(img, (w, h))
+
+        #     panel = np.hstack([
+        #         resize_to_height(ensure_bgr(crop),            target_h),
+        #         resize_to_height(ensure_bgr(cropped_corners), target_h),
+        #         resize_to_height(ensure_bgr(warped),          target_h),
+        #     ])
+        #     # Label each column
+        #     for i, label in enumerate(["crop", "corners_cropped", "warped"]):
+        #         x = i * (panel.shape[1] // 3) + 5
+        #         cv2.putText(panel, label, (x, 20),
+        #                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        #     cv2.imshow("Comparison", panel)
+        #     cv2.waitKey(0)
+
+        # cv2.destroyAllWindows()
             
-        if not results:
-            return " "
+        # if not results:
+        #     return " "
 
-        return " ".join(f"{r}" for r in results)
+        # for r in results:
+        #     filename = os.path.splitext(os.path.basename(image_path))[0]
+        #     cv2.imshow(filename, r)
+        #     cv2.waitKey(0)
+        #     cv2.destroyAllWindows()
+
+        # return " ".join(f"{r}" for r in results)
 
         # parts = []
 
@@ -280,8 +378,8 @@ class HybridDetector:
         # ===================================================================
         # YOLOv8 + ArUco
         # ===================================================================
-        #     roi, offset = self._crop_roi(image_bgr=img_bgr, box=box)
-        #     corners, ids = self._decode_aruco(roi, offset)
+            # roi, offset = self._crop_roi(image_bgr=img_bgr, box=box)
+            # corners, ids = self._decode_aruco(roi, offset)
  
         #     if ids is not None:
         #         for marker_id, corner in zip(ids.flatten(), corners):

@@ -1,6 +1,6 @@
 import argparse
 from src.preprocess import convert_to_yolo_file, split_dataset
-from src.train_yolo import train_model
+from src.train_detector import train_model
 from src.inference import generate_submission
 from src.download import run_download_pipeline
 from src.train_corners import train

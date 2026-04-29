@@ -84,7 +84,6 @@ def main():
         print(f"    - Input     : {args.raw_dir}")
         print(f"    - Output    : {args.out_dir}")
         print(f"    - Transform : {'yes (angle=' + str(args.angle) + ')' if args.transform else 'no'}")
-        convert_to_yolo_file(args.raw_dir)
         split_dataset(
             src_dir=args.raw_dir,
             base_dir=args.out_dir,

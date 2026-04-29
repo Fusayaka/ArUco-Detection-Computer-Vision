@@ -127,6 +127,8 @@ def split_dataset(
         transform_dir(input_dir=src_dir, output_dir=src_dir, angle=angle)
         print("[*] Augmentation completed.")
 
+    convert_to_yolo_file(src_dir)
+
     # Step 3 — create output folder structure
     for sub in ["images/train", "images/val", "labels/train", "labels/val"]:
         (base_dir / sub).mkdir(parents=True, exist_ok=True)

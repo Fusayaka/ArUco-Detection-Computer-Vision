@@ -6,6 +6,7 @@ import os
 
 from src.corners import *
 from src.decode import *
+from src.preprocess import enhance_image
 
 # Pre-defined sharpening kernel
 _SHARPEN_KERNEL = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
@@ -258,7 +259,7 @@ class HybridDetector:
         bandwidth without improving the score.
         """
         if not results:
-            return ""
+            return " "
 
         parts = []
         for r in results:
@@ -285,7 +286,8 @@ class HybridDetector:
         img_bgr = cv2.imread(image_path)
         if img_bgr is None:
             return " "
- 
+
+        img_bgr = enhance_image(img_bgr, correct_gradient=True)
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         boxes = self._get_yolo_boxes(img_rgb)
 

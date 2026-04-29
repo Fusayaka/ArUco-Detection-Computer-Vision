@@ -4,6 +4,7 @@
 # Ignore raw and processed data to save repository space
 data/raw/
 data/processed/
+data/aruco-detection-challenge/
 
 # Ignore PyTorch/YOLO model weights
 # *.pt
@@ -25,3 +26,5 @@ output/*
 __pycache__/
 *.py[cod]
 *$py.class
+
+.DS_Store

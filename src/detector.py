@@ -306,7 +306,7 @@ class HybridDetector:
 
         # return " ".join(f"exp_bbox: {exp_bbox[0]:.3f} {exp_bbox[1]:.3f} {exp_bbox[2]:.3f} {exp_bbox[3]:.3f} \n refined corners: {refined_corners} \n roi_offset: {offset[0]:.3f} {offset[1]:.3f} {offset[2]:.3f} {offset[3]:.3f} \n -------------------------------------------------- \n" for exp_bbox, refined_corners, offset in results)
 
-            # cropped_corners = img_bgr[int(refined_corners[0][1]):int(refined_corners[2][1]), int(refined_corners[0][0]):int(refined_corners[2][0])]
+            # cropped_corners = img_bgr[int(refined_corners[:, 1].min()):int(refined_corners[:, 1].max()), int(refined_corners[:, 0].min()):int(refined_corners[:, 0].max())]
             # # corners, ids = self._decode_aruco(corners_cropped, [0, 0])
             # warped = warp_marker(img_bgr, refined_corners)
             # normalized = normalize_patch(warped)

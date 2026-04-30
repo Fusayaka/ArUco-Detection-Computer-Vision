@@ -236,7 +236,9 @@ def parse_prediction_string(pred_str: str) -> list[Prediction]:
 
 def load_submission(csv_path: str | Path) -> dict[str, list[Prediction]]:
     """Load a Kaggle submission CSV → dict[image_stem → list[Prediction]]."""
-    df = pd.read_csv(csv_path)
+    # dtype=str prevents pandas from parsing zero-padded IDs as integers
+    # (e.g. "000000000315" would become 315, losing the leading zeros).
+    df = pd.read_csv(csv_path, dtype={"image_id": str})
     result: dict[str, list[Prediction]] = {}
     for _, row in df.iterrows():
         stem = str(row["image_id"])

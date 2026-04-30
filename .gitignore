@@ -27,4 +27,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+.env
+
+# Ignore virtual environment folders
+venv/
+
 .DS_Store

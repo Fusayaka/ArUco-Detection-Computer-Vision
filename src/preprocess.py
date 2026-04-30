@@ -1,68 +1,140 @@
-import os
-import json
 import glob
-import shutil
+import json
+import os
 import random
+import shutil
+from pathlib import Path
+ 
 import cv2
 import numpy as np
+ 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
-def convert_to_yolo_file(dirpath):
-    """Parse JSON annotations and convert them into standard YOLO format (.txt)."""
-    label_dir = os.path.join(dirpath, 'labels')
-    if os.path.exists(label_dir) and len(os.listdir(label_dir)) > 0:
-        print(f'{label_dir} already exists.')
+
+def _remove_test_duplicates(raw_dir: Path, test_dir: Path) -> None:
+    """
+    Removes files from *raw_dir* whose stems also appear in *test_dir*.
+ 
+    This prevents test images from leaking into the training set.
+ 
+    Args:
+        raw_dir:  Directory containing raw training data.
+        test_dir: Directory containing test images.
+    """
+    if not os.path.exists(test_dir):
+        print(f"[!] Test folder not found at '{test_dir}', skipping duplicate removal.")
         return
-        
-    os.makedirs(label_dir, exist_ok=True)
-    json_files = glob.glob(os.path.join(dirpath, '*.json'))
+ 
+    test_stems = {
+        f.stem
+        for f in test_dir.iterdir()
+        if f.is_file() and f.suffix.lower() in _IMAGE_EXTENSIONS
+    }
+ 
+    removed = 0
+    for raw_file in raw_dir.iterdir():
+        if raw_file.is_file() and raw_file.stem in test_stems:
+            raw_file.unlink()
+            removed += 1
+ 
+    print(f"[*] Removed {removed // 2} duplicate file(s) from '{raw_dir}'.")
+
+
+def convert_to_yolo_file(dirpath: str | Path) -> None:
+    """
+    Parses JSON annotations in *dirpath* and converts them to YOLO format .txt files.
+ 
+    Skips conversion if a non-empty ``labels/`` subdirectory already exists.
+ 
+    Args:
+        dirpath: Directory containing .jpg images and matching .json annotations.
+    """
+    dirpath = Path(dirpath)
+    label_dir = dirpath / "labels"
+    
+    if label_dir.exists() and any(label_dir.iterdir()):
+        print(f"[*] Labels already exist at '{label_dir}', skipping conversion.")
+        return
+ 
+    label_dir.mkdir(parents=True, exist_ok=True)
+    json_files = glob.glob(str(dirpath / "*.json"))
 
     for json_file in json_files:
-        file_id = os.path.basename(json_file).replace('.json', '')
-        img_path = os.path.join(dirpath, f'{file_id}.jpg')
-
-        img = cv2.imread(img_path)
-        if img is None: continue
-        height, width, _ = img.shape
-
-        with open(json_file, 'r') as f:
+        stem = Path(json_file).stem
+        img_path = dirpath / f"{stem}.jpg"
+ 
+        img = cv2.imread(str(img_path))
+        if img is None:
+            continue
+        height, width = img.shape[:2]
+ 
+        with open(json_file, "r") as f:
             data = json.load(f)
 
         lines = []
         for marker in data['markers']:
-            corner = marker['corners']
-            xs = [c[0] for c in corner]
-            ys = [c[1] for c in corner]
-                
-            x_min, x_max = min(xs), max(xs)
-            y_min, y_max = min(ys), max(ys)
+            xs = [c[0] for c in marker["corners"]]
+            ys = [c[1] for c in marker["corners"]]
+ 
+            x_mid_norm = ((min(xs) + max(xs)) / 2) / width
+            y_mid_norm = ((min(ys) + max(ys)) / 2) / height
+            w_norm     = (max(xs) - min(xs)) / width
+            h_norm     = (max(ys) - min(ys)) / height
+ 
+            lines.append(f"0 {x_mid_norm:.6f} {y_mid_norm:.6f} {w_norm:.6f} {h_norm:.6f}")
 
-            x_mid_norm = ((x_min + x_max) / 2) / width
-            y_mid_norm = ((y_min + y_max) / 2) / height
-            w_norm = (x_max - x_min) / width
-            h_norm = (y_max - y_min) / height
+        with open(label_dir / f"{stem}.txt", "w") as f:
+            f.write("\n".join(lines))
+ 
+    print("[*] Converted annotations to YOLO format successfully.")
 
-            line = f'0 {x_mid_norm:.6f} {y_mid_norm:.6f} {w_norm:.6f} {h_norm:.6f}'
-            lines.append(line)
+def split_dataset(
+    src_dir: str | Path,
+    base_dir: str | Path = "data/processed/dataset",
+    train_ratio: float = 0.8,
+    apply_transform: bool = False,
+    angle: float | None = None,
+) -> None:
+    """
+    Splits the dataset into train/val sets and organises the directory structure.
+ 
+    Steps:
+        1. Remove any raw files whose stems match test images (deduplication).
+        2. Optionally apply rotation + blur augmentation via :func:`transform_dir`.
+        3. Copy images and labels into ``images/train``, ``images/val``,
+           ``labels/train``, ``labels/val`` under *base_dir*.
+ 
+    Args:
+        src_dir:          Source directory with images and a ``labels/`` subfolder.
+        base_dir:         Root output directory for the split dataset.
+        train_ratio:      Fraction of data used for training (default 0.8).
+        apply_transform:  When True, runs the rotate+blur augmentation pipeline
+                          on *src_dir* before splitting.
+        angle:            Fixed rotation angle passed to :func:`transform_dir`.
+                          A random angle is used per image when None.
+    """
+    src_dir  = Path(src_dir)
+    base_dir = Path(base_dir)
+    
+    # Step 1 — remove test duplicates from raw
+    test_dir = _REPO_ROOT / "data" / "raw" / "test"
+    _remove_test_duplicates(src_dir, Path(test_dir))
 
-        txt_file = os.path.join(label_dir, f'{file_id}.txt')
-        with open(txt_file, 'w') as f:
-            f.write('\n'.join(lines))
-    print("Convert to YOLO format successfully.")
+    # Step 2 — optional augmentation
+    if apply_transform:
+        from src.transformation.transform import transform_dir
+        print("[*] Applying rotation + blur augmentation...")
+        transform_dir(input_dir=src_dir, output_dir=src_dir, angle=angle)
+        print("[*] Augmentation completed.")
 
-def convert_csv_to_yolo_file(dirpath):
-    """Parse CSV annotations and convert them into standard YOLO format (.txt)."""
+    convert_to_yolo_file(src_dir)
 
-def split_dataset(src_dir, base_dir="data/processed/dataset", train_ratio=0.8):
-    """Split data into train/val sets and organize directory structure."""
-    sub_dirs = ["images/train", "images/val", "labels/train", "labels/val"]
-
-    for sub in sub_dirs:
-        try:
-            os.makedirs(os.path.join(base_dir, sub))
-        except FileExistsError:
-            pass
+    # Step 3 — create output folder structure
+    for sub in ["images/train", "images/val", "labels/train", "labels/val"]:
+        (base_dir / sub).mkdir(parents=True, exist_ok=True)
         
-    all_ids = [f.replace('.jpg', '') for f in os.listdir(src_dir) if f.endswith('.jpg')]
+    all_ids = [f.stem for f in src_dir.iterdir() if f.suffix.lower() == ".jpg"]
     random.seed(42)
     random.shuffle(all_ids)
 
@@ -70,22 +142,22 @@ def split_dataset(src_dir, base_dir="data/processed/dataset", train_ratio=0.8):
     train_ids = all_ids[:split_index]
     val_ids = all_ids[split_index:]
 
-    def move_files(ids, split_name):
-        label_src_dir = os.path.join(src_dir, "labels")
-        for file_id in ids:
-            img_src = os.path.join(src_dir, f"{file_id}.jpg")
-            img_dst = os.path.join(base_dir, f"images/{split_name}/{file_id}.jpg")
-            if os.path.exists(img_src):
+    def _copy_split(ids: list[str], split_name: str) -> None:
+        label_src_dir = src_dir / "labels"
+        for stem in ids:
+            img_src = src_dir / f"{stem}.jpg"
+            img_dst = base_dir / "images" / split_name / f"{stem}.jpg"
+            if img_src.exists():
                 shutil.copy(img_src, img_dst)
-
-            txt_src = os.path.join(label_src_dir, f"{file_id}.txt")
-            txt_dst = os.path.join(base_dir, f"labels/{split_name}/{file_id}.txt")
-            if os.path.exists(txt_src):
+ 
+            txt_src = label_src_dir / f"{stem}.txt"
+            txt_dst = base_dir / "labels" / split_name / f"{stem}.txt"
+            if txt_src.exists():
                 shutil.copy(txt_src, txt_dst)
-
-    move_files(train_ids, "train")
-    move_files(val_ids, "val")
-    print("Dataset split successfully.")
+ 
+    _copy_split(train_ids, "train")
+    _copy_split(val_ids, "val")
+    print("[*] Dataset split successfully.")
 
 def enhance_image(
     image: np.ndarray,

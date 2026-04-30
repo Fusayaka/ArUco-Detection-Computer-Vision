@@ -17,6 +17,85 @@ _GAMMA_TABLE = {
     for gamma in (0.5, 2.0)
 }
 
+def _iou(box_a: tuple, box_b: tuple) -> float:
+    """Compute Intersection-over-Union between two axis-aligned bounding boxes.
+
+    Args:
+        box_a, box_b: (x_min, y_min, x_max, y_max) tuples.
+
+    Returns:
+        IoU in [0, 1].
+
+    WHY IoU?
+    It is scale-invariant: a small box that almost perfectly overlaps another
+    small box gets the same IoU as two large overlapping boxes.  This makes
+    the threshold (e.g., 0.5) meaningful regardless of marker size.
+    """
+    ax0, ay0, ax1, ay1 = box_a
+    bx0, by0, bx1, by1 = box_b
+
+    # Intersection rectangle
+    ix0 = max(ax0, bx0)
+    iy0 = max(ay0, by0)
+    ix1 = min(ax1, bx1)
+    iy1 = min(ay1, by1)
+
+    inter_w = max(0, ix1 - ix0)
+    inter_h = max(0, iy1 - iy0)
+    inter = inter_w * inter_h
+
+    if inter == 0:
+        return 0.0
+
+    area_a = (ax1 - ax0) * (ay1 - ay0)
+    area_b = (bx1 - bx0) * (by1 - by0)
+    union = area_a + area_b - inter
+
+    return inter / union if union > 0 else 0.0
+
+
+def non_maximum_suppression(
+    detections: list[Detection],
+    iou_threshold: float = 0.5,
+) -> list[Detection]:
+    """Remove duplicate/overlapping detections, keeping the most confident.
+
+    HOW IT WORKS (greedy NMS):
+    1. Sort detections by confidence (highest first).
+    2. Iterate through the sorted list.  Each detection is either "kept"
+       (added to the output list) or "suppressed".
+    3. A detection is suppressed if its IoU with *any already-kept detection*
+       exceeds iou_threshold.
+
+    WHY GREEDY?  The optimal NMS (keeping the subset with maximum total score)
+    is NP-hard.  The greedy approach runs in O(N²) — fine for N < 100
+    detections per image — and produces near-optimal results in practice.
+
+    Args:
+        detections:    Unfiltered list from the detect stage.
+        iou_threshold: IoU above which two boxes are considered duplicates.
+
+    Returns:
+        Filtered list with overlapping/duplicate detections removed.
+    """
+    if not detections:
+        return []
+
+    # Sort by confidence descending (highest confidence = most reliable).
+    sorted_dets = sorted(detections, key=lambda d: d.confidence, reverse=True)
+
+    kept: list[Detection] = []
+    for candidate in sorted_dets:
+        suppressed = False
+        for accepted in kept:
+            if _iou(candidate.bbox, accepted.bbox) > iou_threshold:
+                suppressed = True
+                break
+        if not suppressed:
+            kept.append(candidate)
+
+    return kept
+
 @dataclass
 class PipelineResult:
     """One fully decoded marker detected in an image."""

@@ -8,9 +8,9 @@ from src.download import run_download_pipeline
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ArUco Marker Detection Pipeline - HCMUT Project")
 
-    parser.add_argument("--run-all",   action="store_true", help="Run the entire pipeline (Download -> Prepare -> Train -> Infer)")
+    parser.add_argument("--run-all",   action="store_true", help="Run the entire pipeline (Download -> preprocess -> Train -> Infer)")
     parser.add_argument("--download",  action="store_true", help="Download dataset from Zenodo")
-    parser.add_argument("--prepare",   action="store_true", help="Run data preparation step")
+    parser.add_argument("--preprocess",   action="store_true", help="Run data preparation step")
     parser.add_argument("--train",     action="store_true", help="Run model training step")
     parser.add_argument("--infer",     action="store_true", help="Run inference on test set")
 
@@ -67,18 +67,18 @@ def main():
     args, parser = parse_arguments()
 
     run_download = args.run_all or args.download
-    run_prepare  = args.run_all or args.prepare
+    run_preprocess  = args.run_all or args.preprocess
     run_train    = args.run_all or args.train
     run_infer    = args.run_all or args.infer
 
-    if not any([run_download, run_prepare, run_train, run_infer]):
+    if not any([run_download, run_preprocess, run_train, run_infer]):
         parser.print_help()
         return
 
     if run_download:
         run_download_pipeline()
 
-    if run_prepare:
+    if run_preprocess:
         print("\n" + "=" * 50)
         print("[*] Starting data preparation pipeline...")
         print(f"    - Input     : {args.raw_dir}")

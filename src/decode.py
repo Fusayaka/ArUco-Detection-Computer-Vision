@@ -212,23 +212,28 @@ def warp_marker(
 
 
 def extract_bits(warped: np.ndarray) -> np.ndarray:
-    """Convert a warped marker patch to a 6×6 binary bit array.
+    """Convert a warped marker patch to a 6×6 binary bit array using Otsu's thresholding.
 
     HOW:
     The patch is (N_CELLS × CELL_SIZE) × (N_CELLS × CELL_SIZE) = 32×32 pixels.
     It contains 8×8 cells of CELL_SIZE×CELL_SIZE pixels each.  The outer ring
     of cells is the black border; the inner 6×6 are the information-bearing bits.
 
-    For each interior cell (row r, col c), we average the CELL_SIZE×CELL_SIZE
-    pixel block and compare to 0.5 (after normalisation).  Averaging is more
-    robust than sampling the centre pixel: blur or slight warp errors shift
-    the centre but the average over the whole cell remains stable.
+    We apply Otsu's thresholding to automatically determine the optimal threshold
+    value that minimizes intra-class variance. This is more robust than a fixed
+    threshold as it adapts to varying lighting conditions without needing explicit
+    normalisation.
 
-    WHY not use the black border for thresholding?
-    We *could* use the border (which should all be 0) to calibrate the
-    threshold dynamically.  But after min-max normalisation the threshold 0.5
-    already exploits the full contrast range of the patch.  The border
-    calibration adds complexity without a clear benefit in practice.
+    For each interior cell (row r, col c), we extract the CELL_SIZE×CELL_SIZE
+    pixel block and sample the center pixel from the thresholded binary image.
+    Sampling the center pixel is reliable because Otsu's threshold has already
+    made a clean binary decision for each pixel.
+
+    WHY Otsu's thresholding?
+    Otsu's method automatically computes the threshold that best separates the
+    foreground (white bits) from background (black bits) by minimizing within-class
+    variance. This eliminates the need for manual normalization and is more
+    adaptive to different lighting conditions than fixed-value thresholding.
 
     Args:
         warped: (PATCH_SIZE, PATCH_SIZE) uint8 grayscale, output of warp_marker.
@@ -236,8 +241,8 @@ def extract_bits(warped: np.ndarray) -> np.ndarray:
     Returns:
         (N_BITS, N_BITS) bool array — True = white cell (bit 1).
     """
-    # Normalise the entire patch to [0, 1] float32.
-    norm = normalize_patch(warped)  # from preprocess.py
+    # Apply Otsu's thresholding to automatically determine optimal threshold
+    _, binary = cv2.threshold(warped, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     bits = np.zeros((N_BITS, N_BITS), dtype=bool)
     for r in range(N_BITS):
@@ -245,8 +250,11 @@ def extract_bits(warped: np.ndarray) -> np.ndarray:
             # Interior cell (r, c) starts at pixel row/col (r+1)*CELL_SIZE.
             r0 = (r + 1) * CELL_SIZE
             c0 = (c + 1) * CELL_SIZE
-            cell = norm[r0 : r0 + CELL_SIZE, c0 : c0 + CELL_SIZE]
-            bits[r, c] = cell.mean() > 0.5
+            # Sample the center pixel of the cell from the binary image
+            center_r = r0 + CELL_SIZE // 2
+            center_c = c0 + CELL_SIZE // 2
+            # 255 (white) = bit 1, 0 (black) = bit 0
+            bits[r, c] = binary[center_r, center_c] > 128
 
     return bits
 

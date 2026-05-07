@@ -12,10 +12,8 @@ from src.preprocess import enhance_image
 _SHARPEN_KERNEL = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
  
 # Gamma lookup tables pre-computed for the two fixed gamma values used
-_GAMMA_TABLE = {
-    gamma: np.array([((i / 255.0) ** (1.0 / gamma)) * 255 for i in range(256)], dtype=np.uint8)
-    for gamma in (0.5, 2.0)
-}
+def get_gamma_table(gamma):
+    return np.array([((i / 255.0) ** (1.0 / gamma)) * 255 for i in range(256)], dtype=np.uint8)
 
 def _iou(box_a: tuple, box_b: tuple) -> float:
     """Compute Intersection-over-Union between two axis-aligned bounding boxes.
@@ -268,7 +266,8 @@ class HybridDetector:
         y2 = min(h, int(y2_f) + self.padding)
 
         # offset = (float(x1), float(y1))
-        offset = (float(x1), float(y1), float(x2), float(y2))
+        # offset = (float(x1), float(y1), float(x2), float(y2))
+        offset = (max(0, x1_f - self.padding), max(0, y1_f - self.padding))
 
         return image_bgr[y1:y2, x1:x2], offset
         # return image_bgr[y1:y2, x1:x2], (x1, y1, x2, y2)
@@ -289,8 +288,8 @@ class HybridDetector:
         return [
             gray,
             clahe,
-            cv2.LUT(gray, _GAMMA_TABLE[0.5]),
-            cv2.LUT(gray, _GAMMA_TABLE[2.0]),
+            cv2.LUT(gray, get_gamma_table(0.5)),
+            cv2.LUT(gray, get_gamma_table(2.0)),
             cv2.filter2D(clahe, -1, _SHARPEN_KERNEL),
         ]
 
